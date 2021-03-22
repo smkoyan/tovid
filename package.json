@@ -1,0 +1,23 @@
+{
+  "name": "tovid",
+  "version": "1.0.0",
+  "description": "telegram bot which provides covid data",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "telegram",
+    "bot",
+    "covid",
+    "statistics"
+  ],
+  "author": "Sargis Mkoyan",
+  "license": "ISC",
+  "dependencies": {
+    "dayjs": "^1.9.7",
+    "ms": "^2.1.3",
+    "node-fetch": "^2.6.1",
+    "sqlite3": "^5.0.0"
+  }
+}
