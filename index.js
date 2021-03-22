@@ -1,3 +1,7 @@
+if (typeof process.env.PORT !== 'undefined') {
+    require('./stub_server'); // only for purposes of heroku
+}
+
 const fetch = require('node-fetch');
 const sqlite3 = require('sqlite3').verbose(); // Sets the execution mode to verbose to produce long stack traces
 
