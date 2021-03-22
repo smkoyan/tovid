@@ -1,6 +1,13 @@
 const fetch = require('node-fetch');
 const sqlite3 = require('sqlite3').verbose(); // Sets the execution mode to verbose to produce long stack traces
-const dayjs = require('dayjs');
+
+const _dayjs = require('dayjs');
+const utc = require('dayjs/plugin/utc');
+_dayjs.extend(utc);
+
+const dayjs = () => _dayjs.utc().add(4, 'hours');
+
+
 const ms = require('ms');
 const token = '1422055904:AAHMVbFbvS17wsxasvKmMPp2kuIGOrwZFJ4';
 
