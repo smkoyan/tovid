@@ -5,6 +5,7 @@ const { Sequelize } = require("sequelize");
     storage: './tovid.db'
 });*/
 
-const sequelize = new Sequelize('postgres://postgres:postgres@localhost:5432/tovid');
+console.log(process.env.DATABASE_URL)
+const sequelize = new Sequelize(process.env.DATABASE_URL);
 
 module.exports = sequelize;
