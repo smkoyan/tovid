@@ -2,8 +2,14 @@ if (typeof process.env.PORT !== 'undefined') {
     require('./stub_server'); // only for purposes of heroku
 }
 
+const User = require('./models/user');
+const Offset = require('./models/offset');
+const Record = require('./models/record');
+
+const sequelize = require('./sequelize');
+const seeder = require('./seeder');
+
 const fetch = require('node-fetch');
-const sqlite3 = require('sqlite3').verbose(); // Sets the execution mode to verbose to produce long stack traces
 
 const _dayjs = require('dayjs');
 const utc = require('dayjs/plugin/utc');
@@ -15,20 +21,11 @@ const dayjs = () => _dayjs.utc().add(4, 'hours');
 const ms = require('ms');
 const token = '1422055904:AAHMVbFbvS17wsxasvKmMPp2kuIGOrwZFJ4';
 
-const db_filename = 'db';
-
-const db = new sqlite3.Database(db_filename, sqlite3.OPEN_READWRITE, err => {
-    if (err) {
-        return console.error(err.message);
-    }
-
-    console.log('Successfully connected to the database');
-});
-
 const log = (...args) => {
     const datetime = dayjs().format('YYYY-MM-DD HH:mm:ss');
     console.log('[' + datetime + ']', ':', ...args);
 };
+
 
 // hello everyone
 // today we are going to build a telegram bot which will provide us with covid-19 data every day
@@ -59,8 +56,6 @@ const log = (...args) => {
 // to be continued...
 
 
-
-
 const getUpdates = async (offset = 0) => {
     const method = 'getUpdates';
     const url = `https://api.telegram.org/bot${token}/${method}`;
@@ -79,14 +74,14 @@ const getUpdates = async (offset = 0) => {
 
         if (response.ok) {
             const responseBody = await response.json();
-            log(JSON.stringify(responseBody.result, null, '\t'));
+            log('getUpdates 1', JSON.stringify(responseBody.result, null, '\t'));
             return responseBody.result;
         } else {
-            log(response.statusText)
+            log('getUpdates 2', response.statusText)
             return null;
         }
     } catch (error) {
-        log(error);
+        log('getUpdates 3', error);
         return null;
     }
 };
@@ -127,47 +122,40 @@ const fetchUsers = updates => {
     return users;
 };
 
-const storeUsers = users => {
-    return new Promise((resolve, reject) => {
-        const query = 'INSERT OR IGNORE INTO users (tg_id, first_name, created_at) VALUES ' + '(? , ?, DATE()),'.repeat(users.length).slice(0, -1);
-        const params = users.map(user => [user.id, user.first_name]).flat();
 
-        db.run(query, params, function (error) {
-            if (error) {
-                reject(error);
-            } else {
-                resolve(this);
-            }
-        });
+const storeUsers = async users => {
+    const _users = users.map(user => ({
+        tgId: user.id,
+        firstName: user.first_name,
+    }));
+
+    const result = await User.bulkCreate(_users, {
+        ignoreDuplicates: true,
     });
+
+    return result.filter(user => user.getDataValue('id') !== null);
 };
 
-const storeRecord = record => {
-    return new Promise((resolve, reject) => {
-        const query = 'INSERT OR IGNORE INTO records (cases, recovered, active, created_at) values (?, ?, ?, DATE())';
-        const params = [record.todayCases, record.todayRecovered, record.active];
 
-        db.run(query, params, function (error) {
-            if (error) {
-                reject(error);
-            } else {
-                resolve(this);
-            }
+const storeRecord = async record => {
+    try {
+        await Record.create({
+            cases: record.todayCases,
+            recovered: record.todayRecovered,
+            active: record.active,
         });
-    });
+
+        return 1;
+    } catch (e) {
+        if (e.name === 'SequelizeUniqueConstraintError') {
+            return 0;
+        }
+    }
 };
 
 const storeOffset = offset => {
-    return new Promise((resolve, reject) => {
-        const query = 'INSERT INTO offsets (id) VALUES (?)';
-
-        db.run(query, offset, function (error) {
-            if (error) {
-                reject(error);
-            } else {
-                resolve(this);
-            }
-        });
+    return Offset.create({
+        id: offset,
     });
 };
 
@@ -201,61 +189,46 @@ const validRecord = record => {
     const updated = dayjs(record.updated);
     const today = dayjs();
 
-    if (! updated.isSame(today, 'day')) {
+    if (!updated.isSame(today, 'day')) {
         return false;
     }
 
     return record.todayCases !== null;
 };
 
-const getUsers = () => {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT tg_id FROM users';
-
-        db.all(query, (error, rows) => {
-            if (error) {
-                reject(error);
-            } else {
-                resolve(rows);
-            }
-        });
+const getUsers = async () => {
+    const result = await User.findAll({
+        attributes: ['tgId'],
     });
+
+    return result.map(user => user.getDataValue('tgId'))
 };
 
 const getLastRecord = () => {
-    return new Promise((resolve, reject) => {
-        // const query = 'SELECT cases, recovered, active FROM records WHERE id = (SELECT MAX(id) FROM records)';
-        const query = 'SELECT cases, recovered, active FROM records WHERE created_at = ?';
-        const now = dayjs().format('YYYY-MM-DD');
+    const now = dayjs().format('YYYY-MM-DD');
 
-        db.get(query, now, (error, row) => {
-            if (error) {
-                reject(error);
-            } else {
-                resolve(row);
-            }
-        });
+    return Record.findOne({
+        where: {
+            createdAt: now
+        },
+        attributes: ['cases', 'recovered', 'active'],
     });
 };
 
 const getTodayRecord = () => {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT cases, recovered, active FROM records WHERE created_at = ?';
-        const now = dayjs().format('YYYY-MM-DD');
+    const now = dayjs().format('YYYY-MM-DD');
 
-        db.get(query, now, (error, row) => {
-            if (error) {
-                reject(error);
-            } else {
-                resolve(row);
-            }
-        });
+    return Record.findOne({
+        where: {
+            createdAt: now
+        },
+        attributes: ['cases', 'recovered', 'active'],
     });
 }
 
 const notify = users => {
     return getLastRecord().then(record => {
-        if (typeof record === 'undefined') {
+        if (record === null) {
             return null;
         }
 
@@ -290,35 +263,15 @@ const sendMessage = async (chat_id, text) => {
     return response.json();
 };
 
-const getOffset = () => {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT MAX(id) AS offset FROM offsets';
-
-        db.get(query, (error, row) => {
-            if (error) {
-                reject(error);
-            } else {
-                resolve(row.offset);
-            }
-        });
-    });
-};
-
-const getLastNUsers = n => {
-    return new Promise((resolve, reject) => {
-        const query = 'SELECT tg_id FROM users ORDER BY id DESC LIMIT ' + n;
-
-        db.all(query, (error, rows) => {
-            if (error) {
-                reject(error);
-            } else {
-                resolve(rows.map(r => r.tg_id));
-            }
-        });
-    });
+const getOffset = async () => {
+    const result = await Offset.max('id');
+    return isNaN(result) ? null : result;
 };
 
 const run = async () => {
+    await sequelize.sync();
+    await seeder.run();
+
     processUpdates();
     processRecords();
 };
@@ -335,17 +288,16 @@ const processRecords = async () => {
     const record = await fetchRecord();
 
 
-    if (! validRecord(record)) {
+    if (!validRecord(record)) {
         log('invalid record: next run:', ms('10m'));
         return setTimeout(processRecords, ms('10m'));
     }
 
-    const { changes } = await storeRecord(record);
+    const changes = await storeRecord(record);
 
     if (changes > 0) {
         log('new record arrived');
-        const users = await getUsers();
-        const usersIds = users.map(u => u.tg_id);
+        const usersIds = await getUsers();
         await notify(usersIds);
     }
 
@@ -371,31 +323,31 @@ const processUpdates = async () => {
     const newOffset = fetchOffset(updates);
 
     if (users.length > 0) {
-    	await storeUsers(users).then(context => {
-	        console.log('storeUsers', context);
+        await storeUsers(users).then(result => {
+            log('storeUsers', result);
 
-	        const { changes } = context;
+            const {length: changes} = result;
 
-	        if (changes < 1) {
-	            return;
-	        }
+            if (changes < 1) {
+                return;
+            }
 
-	        return getTodayRecord().then(record => {
-	            if (!record) {
-	                return;
-	            }
+            return getTodayRecord().then(record => {
+                if (!record) {
+                    return;
+                }
 
-	            return getLastNUsers(changes).then(users => {
-	                return notify(users);
-	            }).then(messages => {
-	                console.log(messages);
-	            });
-	        });
-	    });
+                const userTgIds = result.map(user => user.getDataValue('tgId'));
+
+                notify(userTgIds).then(messages => {
+                    log(messages);
+                });
+            });
+        });
     }
 
-    await storeOffset(newOffset).then(context => {
-        console.log('storeOffset', context);
+    await storeOffset(newOffset).then(result => {
+        log('storeOffset', result);
     });
 
     setTimeout(processUpdates, 1000);
