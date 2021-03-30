@@ -274,6 +274,8 @@ const run = async () => {
 
     processUpdates();
     processRecords();
+
+    console.log(process.env.DATABASE_URL)
 };
 
 const processRecords = async () => {
