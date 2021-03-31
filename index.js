@@ -204,17 +204,6 @@ const getUsers = async () => {
     return result.map(user => user.getDataValue('tgId'))
 };
 
-const getLastRecord = () => {
-    const now = dayjs().format('YYYY-MM-DD');
-
-    return Record.findOne({
-        where: {
-            createdAt: now
-        },
-        attributes: ['cases', 'recovered', 'active'],
-    });
-};
-
 const getTodayRecord = () => {
     const now = dayjs().format('YYYY-MM-DD');
 
@@ -227,7 +216,7 @@ const getTodayRecord = () => {
 }
 
 const notify = users => {
-    return getLastRecord().then(record => {
+    return getTodayRecord().then(record => {
         if (record === null) {
             return null;
         }
@@ -322,6 +311,7 @@ const processUpdates = async () => {
     }
 
     const users = fetchUsers(updates);
+    log('processUpdates', 'fetchUsers', users);
     const newOffset = fetchOffset(updates);
 
     if (users.length > 0) {
@@ -341,7 +331,7 @@ const processUpdates = async () => {
 
                 const userTgIds = result.map(user => user.getDataValue('tgId'));
 
-                notify(userTgIds).then(messages => {
+                return notify(userTgIds).then(messages => {
                     log(messages);
                 });
             });
